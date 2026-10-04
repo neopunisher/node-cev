@@ -1,0 +1,63 @@
+{
+  "name": "node-cev",
+  "version": "0.1.0",
+  "description": "Typed, calibrated decisions from a small local LLM in one forward pass: is this true, which of these, which level. The cev engine in-process as a native addon (Metal, Accelerate, multi-core CPU), with a decision log, feedback and online learning.",
+  "keywords": [
+    "cev",
+    "llm",
+    "local-llm",
+    "classification",
+    "classifier",
+    "routing",
+    "decision",
+    "calibration",
+    "qwen",
+    "candle",
+    "metal",
+    "napi",
+    "native",
+    "online-learning",
+    "system-one"
+  ],
+  "author": "Carter Cole <node@cartercole.com>",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/neopunisher/node-cev#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/neopunisher/node-cev.git"
+  },
+  "bugs": {
+    "url": "https://github.com/neopunisher/node-cev/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/",
+    "cev.*.node",
+    "llms.txt"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "npm run build:native && npm run build:ts",
+    "build:native": "node scripts/build-native.mjs",
+    "build:ts": "node -e \"fs.rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
+    "typecheck": "tsc",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "bench": "node scripts/bench.mjs",
+    "prepublishOnly": "npm run build && npm run typecheck && npm test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.4",
+    "typescript": "^7.0.2"
+  }
+}

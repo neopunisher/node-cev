@@ -1,0 +1,88 @@
+# node-cev
+
+> cev for Node.js (>= 22): typed, calibrated decisions from a small local LLM in one forward pass, in-process. You send program state plus typed questions (noul = is this true, choice = which of these, score = which level) and get typed answers with probabilities; the model never generates text. A native addon runs the cev Rust engine (Qwen3 checkpoints; Metal on macOS, Accelerate or multi-threaded CPU kernels, CUDA as a build feature) off the event loop. Every answer is logged with a decision id; feedback on it is stored and learned from online. ESM-only, TypeScript types included, zero runtime dependencies.
+
+Not on npm yet: build from source with `git clone https://github.com/CarterCole/rust-cev` next to this repository, then `npm install && npm run build` (needs Rust). Weights are a Hugging Face repo id or a directory; they are read from the Hugging Face cache or downloaded to `~/.cache/cev/models`.
+
+## Usage
+
+```js
+import { Cev, CevError, info } from 'node-cev';
+
+const cev = await Cev.load({ model: 'Qwen/Qwen3-1.7B', db: 'cev.db' }); // or await Cev.mock() in tests
+
+const res = await cev.decide({
+  state: { ticket: 'The app crashes when I tap Log in' },   // text or any JSON value
+  questions: {
+    team: { type: 'choice', instructions: 'Which team?', criteria: { billing: 'Payments', tech: 'Bugs and crashes' }, task: 'router.team' },
+    refund: { type: 'noul', instructions: 'Is a refund requested?' },
+    severity: { type: 'score', instructions: 'How severe?', criteria: ['Cosmetic', 'Degraded', 'Blocking'] },
+  },
+  // debias: 'none' | 'calibrate' | 'permute' | 'full',  no_store: true
+});
+res.answers.team.choice;      // 'tech', typed 'billing' | 'tech'
+res.answers.refund.noul;      // 0.007 (probability of yes)
+res.answers.severity.score;   // 1.51 (expected level index)
+
+await cev.feedback({ decision_id: res.answers.team.x_cev.decision_id, label: 'tech' });
+cev.close();
+```
+
+All questions of a request are answered in one forward pass. Requests and responses are cev's REST bodies (`POST /v1/systemone`), so their fields are snake_case; `Cev.load` options are camelCase.
+
+## Types
+
+```ts
+type Question =
+  | { type: 'noul'; instructions: string; criteria?: string | { true?: string; false?: string }; task?: string }
+  | { type: 'choice'; instructions: string; criteria: Record<string, string | null> | string[]; task?: string }
+  | { type: 'score'; instructions: string; criteria: string[]; task?: string };   // levels, lowest first
+
+type Answer =
+  | { type: 'noul'; noul: number; x_cev: AnswerMeta }
+  | { type: 'choice'; choice: string; confidence: number; probabilities: Record<string, number>; x_cev: AnswerMeta }
+  | { type: 'score'; score: number; confidence: number; legend: Record<string, string>; probabilities: Record<string, number>; x_cev: AnswerMeta };
+
+interface AnswerMeta { decision_id: string; task: string; adapted: boolean; base_probabilities?: number[] }
+
+interface DecideResponse { model: string; answers: Record<string, Answer>; usage: { input_tokens: number; output_tokens: 0 }; request_id: string; latency_ms: number }
+
+type Label = boolean | number | string | Record<string, number>;
+// noul: true/false, "yes"/"no" or a probability; choice: option name; score: level index; or a distribution { option: p }
+```
+
+`decide` is generic over its questions: each answer has the type its question implies, and a choice answer's `choice` is the union of its option names. An option description may also be `{ what, not_for, examples }`.
+
+## Methods
+
+Everything returns a promise except `cev.model`, `cev.close()` and `info()`. Nothing blocks the event loop.
+
+- `Cev.load(options?)`, `Cev.mock(options?)` (keyword-overlap stand-in; no weights; the whole API works).
+- `cev.model`: `{ id, backbone, hidden_size, max_options, prompt_version, threads, concurrency }`.
+- `cev.decide({ state, questions, debias?, no_store? })` -> `DecideResponse`.
+- `cev.feedback({ decision_id } | { request_id, question_id }, plus label?, weight?, comment?, metadata?)` -> `{ feedback_id, decision_id, task, served_loss?, learned, task_examples, adapter_active }`.
+- `cev.examples([{ state, questions, labels }])` -> `[{ response, feedback }]`: decide, then learn from the labels.
+- `cev.tasks()` -> `[{ task, examples, buffered, active, temperature, base_loss, adapted_loss }]`; `cev.resetTask(task)` -> boolean.
+- `cev.decisions({ task?, limit?, offset? })` -> decision records; `cev.decision(id)` -> `{ decision, state, prompt, feedback } | null`.
+- `cev.export({ task?, model?, labeled?, since?, limit? })` -> training rows (`prompt`, `codes`, `options`, `target`, `label`, ...); `cev.exportNdjson(filter?)` -> the same as NDJSON text for rust-cev's `training/train_lora.py --source file.jsonl`. `labeled` defaults to true.
+- `cev.stats()` -> `{ store: { requests, decisions, feedback, labeled_decisions }, tasks, model }`.
+- `cev.close()`: frees the model after the calls already made settle; later calls reject with code `closed`.
+- `info()` -> `{ version, metal, accelerate, cuda, cores, performanceCores, threads }`.
+
+Options (all optional): `model` (`Qwen/Qwen3-1.7B`), `device` (`auto` | `cpu` | `metal` | `cuda`), `dtype` (`auto` | `f32` | `f16` | `bf16`), `threads` (CPU pool size; default performance cores or `RAYON_NUM_THREADS`; process-wide, first load wins), `concurrency` (forward passes at once; default 1), `db` (SQLite path; default `:memory:`), `debias` (`full`), `maxPermutations` (4), `onlineLearning` (true), `minExamples` (8), `storeFeatures` (true), `maxContext` (32768), `prefixCacheTokens` (65536), `name`. `Cev.mock` takes `db`, `debias`, `maxPermutations`, `onlineLearning`, `minExamples`, `storeFeatures`.
+
+## Behavior worth knowing
+
+- Rejections are `CevError` with `code`: `bad_request` (malformed call), `not_found` (no such decision), `closed`, `internal` (weights, I/O).
+- A task's adapter is served only after `minExamples` labels and only while it beats the base model on labels it had not yet seen; `x_cev.adapted` tells which answered. Name tasks with `task`; otherwise the key is a hash of the question, so rewording starts over.
+- `no_store: true` answers have an empty `decision_id` and cannot take feedback.
+- A state seen before is served from a prefix cache (Qwen3-0.6B on an M4 Max: 35 ms instead of 46 on Metal). Put the parts of the state that change last.
+- Speed (Qwen3-0.6B, M4 Max, 3 questions, `calibrate`): about 46 ms on Metal, 183 ms on CPU; `full` debias costs about twice that. On a GPU keep `concurrency` at 1. On a CPU, `concurrency: 8` roughly doubles requests/s at the cost of per-request latency; more `threads` than 4 barely help a single request on Apple silicon.
+- Ask questions together: one request with 12 questions is cheaper than 4 requests with 3.
+- `CEV_LOG=debug` prints engine timings to stderr. `CEV_NATIVE=/path/to/file.node` loads another build of the addon.
+
+## Links
+
+- [README](https://github.com/neopunisher/node-cev#readme): full documentation and benchmarks
+- [rust-cev](https://github.com/CarterCole/rust-cev): the engine, server, browser build and Rust SDK
+- [Changelog](https://github.com/neopunisher/node-cev/blob/main/CHANGELOG.md)
