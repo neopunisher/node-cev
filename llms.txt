@@ -1,13 +1,13 @@
-# node-cev
+# cev-node
 
 > cev for Node.js (>= 22): typed, calibrated decisions from a small local LLM in one forward pass, in-process. You send program state plus typed questions (noul = is this true, choice = which of these, score = which level) and get typed answers with probabilities; the model never generates text. A native addon runs the cev Rust engine (Qwen3 checkpoints; Metal on macOS, Accelerate or multi-threaded CPU kernels, CUDA as a build feature) off the event loop. Every answer is logged with a decision id; feedback on it is stored and learned from online. ESM-only, TypeScript types included, zero runtime dependencies.
 
-`npm install node-cev`. Prebuilt addons ship for macOS arm64 and Linux x64/arm64 (glibc 2.28+); elsewhere, or for CUDA, build one with `cd node_modules/node-cev && npm run build:native` (needs Rust). Weights are a Hugging Face repo id or a directory; they are read from the Hugging Face cache or downloaded to `~/.cache/cev/models`.
+`npm install cev-node`. Prebuilt addons ship for macOS arm64 and Linux x64/arm64 (glibc 2.28+); elsewhere, or for CUDA, build one with `cd node_modules/cev-node && npm run build:native` (needs Rust). Weights are a Hugging Face repo id or a directory; they are read from the Hugging Face cache or downloaded to `~/.cache/cev/models`.
 
 ## Usage
 
 ```js
-import { Cev, CevError, info } from 'node-cev';
+import { Cev, CevError, info } from 'cev-node';
 
 const cev = await Cev.load({ model: 'Qwen/Qwen3-1.7B', db: 'cev.db' }); // or await Cev.mock() in tests
 

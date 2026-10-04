@@ -34,7 +34,7 @@ function load(): Native {
   const name = target();
   // CEV_NATIVE points at another build (say, one with CUDA); otherwise the
   // binary built into the package root, then a prebuilt platform package.
-  const candidates = process.env.CEV_NATIVE ? [process.env.CEV_NATIVE] : [`../cev.${name}.node`, `node-cev-${name}`];
+  const candidates = process.env.CEV_NATIVE ? [process.env.CEV_NATIVE] : [`../cev.${name}.node`, `cev-node-${name}`];
   const errors: string[] = [];
   for (const id of candidates) {
     try {
@@ -47,7 +47,7 @@ function load(): Native {
     }
   }
   throw new Error(
-    `node-cev: no native binary for ${name}. Build one with \`npm run build:native\` ` +
+    `cev-node: no native binary for ${name}. Build one with \`npm run build:native\` ` +
       `(needs Rust; see "Building from source" in the README).\n  ${errors.join('\n  ')}`,
   );
 }

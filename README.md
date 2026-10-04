@@ -1,4 +1,4 @@
-# node-cev
+# cev-node
 
 > Typed, calibrated decisions from a small local model, in one forward pass.
 
@@ -17,7 +17,7 @@ runs.
 [![CI](https://github.com/neopunisher/node-cev/actions/workflows/ci.yml/badge.svg)](https://github.com/neopunisher/node-cev/actions/workflows/ci.yml)
 
 ```js
-import { Cev } from 'node-cev';
+import { Cev } from 'cev-node';
 
 const cev = await Cev.load({ model: 'Qwen/Qwen3-1.7B' });
 
@@ -42,7 +42,7 @@ await cev.feedback({ decision_id: answers.severity.x_cev.decision_id, label: 2 }
 ## Install
 
 ```bash
-npm install node-cev
+npm install cev-node
 ```
 
 Needs Node.js >= 22. The package carries a prebuilt addon for macOS on Apple
@@ -205,8 +205,8 @@ cache. Median latency of one request at a time, in milliseconds:
 | | `calibrate`: new / same state | `full`: new / same state | 3k-token state, `calibrate`: new / same |
 | --- | ---: | ---: | ---: |
 | the engine as WebAssembly in Node (one thread) | 5200 / 3300 | 12200 / 10100 | |
-| node-cev on the CPU | 183 / 130 | 391 / 325 | 3391 / 358 |
-| node-cev on Metal | 46 / 35 | 88 / 77 | 600 / 66 |
+| cev-node on the CPU | 183 / 130 | 391 / 325 | 3391 / 358 |
+| cev-node on Metal | 46 / 35 | 88 / 77 | 600 / 66 |
 
 Qwen3-1.7B: 382 / 266 and 758 / 674 on the CPU, 98 / 70 and 193 / 169 on
 Metal. The very first request with a question costs about twice a new state
@@ -267,7 +267,7 @@ CEV_TEST_MODEL=Qwen/Qwen3-0.6B npm test   # also run a real model
   elsewhere the default build is CPU-only.
 - The npm package ships `native/` and the build script, so on a platform
   without a prebuilt addon you can build it in place:
-  `cd node_modules/node-cev && npm run build:native`.
+  `cd node_modules/cev-node && npm run build:native`.
 - The addon is looked up as `cev.<platform>-<arch>.node` in the package root
   (`linux-x64-gnu`, `linux-arm64-musl`, ... on Linux). `CEV_NATIVE=/path/to.node`
   loads another build instead.

@@ -1,5 +1,5 @@
 {
-  "name": "node-cev",
+  "name": "cev-node",
   "version": "0.1.0",
   "description": "Typed, calibrated decisions from a small local LLM in one forward pass: is this true, which of these, which level. The cev engine in-process as a native addon (Metal, Accelerate, multi-core CPU), with a decision log, feedback and online learning.",
   "keywords": [

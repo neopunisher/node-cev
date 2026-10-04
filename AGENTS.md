@@ -6,12 +6,14 @@ sync when the public API or the options change.
 
 ## What this is
 
-A Node.js binding for [cev](https://github.com/CarterCole/rust-cev). The
-engine, the decision log and the online learner are Rust crates in that
-repository (`cev-core`, `cev-model`, `cev-runtime`) and are published on their
-own. This repository holds only the glue: a napi addon and a typed wrapper.
-Nothing from the engine is copied here. A change to prompts, model code,
-storage or learning belongs in rust-cev.
+A Node.js binding for [cev](https://github.com/CarterCole/rust-cev), published
+on npm as `cev-node`: npm refuses `node-cev`, this repository's name, as too
+similar to `node-cmd` and `node-red`. The engine, the decision log and the
+online learner are Rust crates in that repository (`cev-core`, `cev-model`,
+`cev-runtime`) and are published on their own. This repository holds only the
+glue: a napi addon and a typed wrapper. Nothing from the engine is copied
+here. A change to prompts, model code, storage or learning belongs in
+rust-cev.
 
 ## Layout
 
