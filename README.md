@@ -270,8 +270,9 @@ CEV_TEST_MODEL=Qwen/Qwen3-0.6B npm test   # also run a real model
 - The addon is looked up as `cev.<platform>-<arch>.node` in the package root
   (`linux-x64-gnu`, `linux-arm64-musl`, ... on Linux). `CEV_NATIVE=/path/to.node`
   loads another build instead.
-- Only macOS on Apple silicon is tested so far. Linux and Windows should build
-  (CPU, or CUDA with the feature) but have not been tried.
+- CI builds the addon and runs the tests (mock backend) on macOS arm64 and
+  Linux x64. Real weights have only been run on Apple silicon; CUDA and Windows
+  are untried.
 
 ## How this relates to rust-cev
 
