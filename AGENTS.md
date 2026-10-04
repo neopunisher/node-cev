@@ -65,6 +65,10 @@ change done.
   into `CevError.code`. Keep the two lists of codes in step.
 - Tests must not need weights or the network: use `Cev.mock()`. Tests that
   need a model are skipped unless `CEV_TEST_MODEL` is set.
+- The `js` examples in `README.md` and `llms.txt` are typechecked and run on
+  the mock backend by `test/docs.test.ts`. Keep them valid as written; a
+  fragment may use only the names that test passes in (`cev`, `state`,
+  `criteria`, `id`, `writeFile`).
 - Benchmark numbers in the README come from `scripts/bench.mjs` on the machine
   named there. Re-measure rather than extrapolate when changing them.
 - User-visible changes get a `CHANGELOG.md` entry.
