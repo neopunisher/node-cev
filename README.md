@@ -41,18 +41,15 @@ await cev.feedback({ decision_id: answers.severity.x_cev.decision_id, label: 2 }
 
 ## Install
 
-There are no prebuilt binaries on npm yet, so for now you build the addon
-from source. That needs Node.js >= 22, a Rust toolchain, and the engine checked
-out next to this repository:
-
 ```bash
-git clone https://github.com/CarterCole/rust-cev
-git clone https://github.com/neopunisher/node-cev
-cd node-cev && npm install && npm run build
+npm install node-cev
 ```
 
-Then depend on the folder (`npm install ../node-cev`) or `npm link` it. See
-[Building from source](#building-from-source) for GPU features.
+Needs Node.js >= 22. The package carries a prebuilt addon for macOS on Apple
+silicon (Metal and Accelerate) and for Linux on x64 and arm64 (glibc 2.28 or
+newer, CPU only). On anything else (Intel Macs, Windows, Alpine), or for CUDA,
+you build the addon yourself, which needs a Rust toolchain: see
+[Building from source](#building-from-source).
 
 Weights are not bundled. `Cev.load` takes a Hugging Face repo id or a local
 directory with a Qwen3 safetensors checkpoint. It looks in the Hugging Face
@@ -259,20 +256,25 @@ second once the weights are in the page cache. Reproduce with
 ```bash
 npm run build:native                      # cargo build -> cev.<platform>-<arch>.node
 npm run build:native -- --features cuda   # NVIDIA GPUs (needs the CUDA toolkit)
+npm run build:native -- --engine ../rust-cev   # against an engine checkout
 npm run build:ts                          # src/ -> dist/
 npm test                                  # mock backend; no weights needed
 CEV_TEST_MODEL=Qwen/Qwen3-0.6B npm test   # also run a real model
 ```
 
-- `native/` is a small Rust crate that links the cev crates from
-  `../rust-cev` (`native/Cargo.toml`). macOS builds always include Metal and
-  Accelerate; elsewhere the default build is CPU-only.
+- `native/` is a small Rust crate that links the cev crates from crates.io
+  (`native/Cargo.toml`). macOS builds always include Metal and Accelerate;
+  elsewhere the default build is CPU-only.
+- The npm package ships `native/` and the build script, so on a platform
+  without a prebuilt addon you can build it in place:
+  `cd node_modules/node-cev && npm run build:native`.
 - The addon is looked up as `cev.<platform>-<arch>.node` in the package root
   (`linux-x64-gnu`, `linux-arm64-musl`, ... on Linux). `CEV_NATIVE=/path/to.node`
   loads another build instead.
 - CI builds the addon and runs the tests (mock backend) on macOS arm64 and
-  Linux x64. Real weights have only been run on Apple silicon; CUDA and Windows
-  are untried.
+  Linux x64; the publish workflow does the same for each prebuilt addon,
+  Linux arm64 included. Real weights have only been run on Apple silicon; CUDA
+  and Windows are untried.
 
 ## How this relates to rust-cev
 

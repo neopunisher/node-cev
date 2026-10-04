@@ -266,6 +266,8 @@ dependencies = [
 [[package]]
 name = "cev-core"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9859118cc9baf59dc43e361f8c3fc81ab835fd014fbfe7d0dbcf503c82f9908d"
 dependencies = [
  "anyhow",
  "hex",
@@ -279,6 +281,8 @@ dependencies = [
 [[package]]
 name = "cev-model"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "781ab529abac60ca6a038bb87687b6b75293d1606eea871f2da5b2f1f32cadf3"
 dependencies = [
  "anyhow",
  "candle-core",
@@ -298,6 +302,8 @@ dependencies = [
 [[package]]
 name = "cev-runtime"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "434f465778b6ac504fb50c7e6b11f3814b0b5c7f966f8281fdbfee7a922897da"
 dependencies = [
  "anyhow",
  "cev-core",

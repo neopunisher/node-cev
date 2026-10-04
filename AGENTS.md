@@ -31,7 +31,8 @@ storage or learning belongs in rust-cev.
 ## Commands
 
 ```bash
-npm run build:native      # cargo build -> cev.<platform>-<arch>.node (needs ../rust-cev)
+npm run build:native      # cargo build -> cev.<platform>-<arch>.node
+npm run build:native -- --engine ../rust-cev   # against an engine checkout, not crates.io
 npm run build:ts          # src/ -> dist/
 npm run typecheck         # tsc, no emit
 npm test                  # node --test on the .ts sources; needs the addon built
@@ -68,7 +69,20 @@ change done.
 
 ## Releasing
 
-Not automated yet: there are no prebuilt binaries on npm, so the package is
-built from source. Publishing needs the cev crates on crates.io first (then
-drop the `path` keys in `native/Cargo.toml`) and a CI job that builds
-`cev.<platform>-<arch>.node` per platform.
+Publishing is via GitHub release -> `.github/workflows/publish.yml`. It builds
+`cev.<platform>-<arch>.node` for macOS arm64 and, in a glibc 2.28 container,
+for Linux x64 and arm64, runs the tests on each, and stages one package
+holding all of them through npm trusted publishing (OIDC); a maintainer then
+approves it with 2FA. There are no per-platform packages, so the package stays
+at zero dependencies. A manual run of the workflow builds without staging.
+
+- Don't run `npm publish` locally: that tarball holds only the local
+  platform's addon, and `prepublishOnly` does not build one.
+- Keep the pinned npm version in the workflow, and its file name: npm trusts
+  `publish.yml` by name.
+- The version lives in `package.json`, `package-lock.json` and
+  `native/Cargo.toml` (which `info().version` reports); the release tag must
+  be `v<version>`.
+- The engine versions are pinned in `native/Cargo.lock`. To take a new engine
+  release, run `cargo update -p cev-core -p cev-model -p cev-runtime` in
+  `native/`.

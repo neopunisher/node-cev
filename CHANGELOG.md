@@ -16,3 +16,6 @@ First version: cev in-process for Node.js.
   decision log, in memory or in a SQLite file (`db`).
 - `Cev.mock()`: the whole API without weights, for tests.
 - `threads` and `concurrency` options, `info()`, and `scripts/bench.mjs`.
+- Prebuilt addons in the npm package for macOS arm64 and Linux x64 and arm64
+  (glibc 2.28 or newer). The addon's sources ship too, for building on other
+  platforms or with CUDA.

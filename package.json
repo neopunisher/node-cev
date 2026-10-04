@@ -42,7 +42,12 @@
   "files": [
     "dist/",
     "cev.*.node",
-    "llms.txt"
+    "llms.txt",
+    "native/Cargo.toml",
+    "native/Cargo.lock",
+    "native/build.rs",
+    "native/src/",
+    "scripts/build-native.mjs"
   ],
   "engines": {
     "node": ">=22"
@@ -54,7 +59,7 @@
     "typecheck": "tsc",
     "test": "node --test \"test/**/*.test.ts\"",
     "bench": "node scripts/bench.mjs",
-    "prepublishOnly": "npm run build && npm run typecheck && npm test"
+    "prepublishOnly": "npm run build:ts && npm run typecheck && npm test"
   },
   "devDependencies": {
     "@types/node": "^22.20.4",
