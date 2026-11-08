@@ -2,8 +2,18 @@
 // (`POST /v1/systemone` and friends), field for field, so they keep its
 // snake_case names. Only the options of `Cev.load` are camelCase.
 
-/** How to correct the model's option-position bias; `full` does both. */
-export type Debias = 'none' | 'calibrate' | 'permute' | 'full';
+/**
+ * How to correct the model's option-position bias; `full` does both. `auto`
+ * is the model's own default: `full` for zero-shot code readouts (Qwen3,
+ * Qwen3.5, Nimble), `none` for trained decision models (Kev, d3, d1, d1-omni).
+ */
+export type Debias = 'auto' | 'none' | 'calibrate' | 'permute' | 'full';
+
+/**
+ * An image or a sound clip. A string is base64, with or without a
+ * `data:...;base64,` header; bytes are encoded for you.
+ */
+export type Media = string | Uint8Array;
 
 /** Describes one option: text, or TypeSafe's structured form. */
 export type Criterion =
@@ -49,6 +59,8 @@ export interface AnswerMeta {
   /** Send this back with `feedback`. Empty when the request had `no_store`. */
   decision_id: string;
   task: string;
+  /** The feedback bucket, when the request named one. */
+  namespace?: string;
   /** True when an online adapter adjusted this answer. */
   adapted: boolean;
   /** The distribution before the adapter, in the order of `probabilities`. */
@@ -106,6 +118,22 @@ export interface DecideRequest<Q extends Questions = Questions> {
   no_store?: boolean;
   /** Overrides the instance's `debias` for this request. */
   debias?: Debias;
+  /**
+   * Feedback bucket. Online adapters are kept per namespace and task, so
+   * labels on decisions made in one namespace only change answers served in
+   * that namespace (one per customer, say). Omit for the default bucket.
+   */
+  namespace?: string;
+  /**
+   * Images every question sees, before the state: PNG, JPEG, WebP or GIF.
+   * Needs a model with `image` in `model.modalities` (d1, d1-omni, d3).
+   */
+  images?: readonly Media[];
+  /**
+   * One sound clip every question hears: WAV (16 kHz mono is best; other
+   * rates are resampled). Needs a model with `audio` in `model.modalities` (d1-omni).
+   */
+  audio?: Media;
 }
 
 export interface DecideResponse<Q extends Questions = Questions> {
@@ -139,6 +167,8 @@ export interface FeedbackResponse {
   feedback_id: string;
   decision_id: string;
   task: string;
+  /** The decision's feedback bucket, when it has one. */
+  namespace?: string;
   /** Log loss of the answer that was served, on this label. */
   served_loss?: number;
   /** Whether the label updated the task's adapter. */
@@ -152,6 +182,9 @@ export interface Example<Q extends Questions = Questions> {
   state: unknown;
   questions: Q;
   labels: { readonly [K in keyof Q]?: Label };
+  namespace?: string;
+  images?: readonly Media[];
+  audio?: Media;
 }
 
 export interface ExampleResult<Q extends Questions = Questions> {
@@ -162,6 +195,8 @@ export interface ExampleResult<Q extends Questions = Questions> {
 /** One task's online adapter. */
 export interface TaskInfo {
   task: string;
+  /** Feedback bucket; absent for the default one. */
+  namespace?: string;
   /** Labels seen. */
   examples: number;
   /** Labels in the replay buffer. */
@@ -181,6 +216,10 @@ export interface ModelInfo {
   object: 'model';
   /** Hugging Face repo id or directory of the weights. */
   backbone: string;
+  /** Decision-model family: how the prompt is built and the answer read out. */
+  family: 'cev' | 'nimble' | 'kev' | 'd3' | 'd1' | 'd1-omni';
+  /** What a request may carry besides text. */
+  modalities: ('text' | 'image' | 'audio')[];
   hidden_size: number;
   /** Most options one question can have. */
   max_options: number;
@@ -205,6 +244,8 @@ export interface DecisionRecord {
   question_id: string;
   model: string;
   task: string;
+  /** Feedback bucket; absent for the default one. */
+  namespace?: string;
   kind: Question['type'];
   question: Question;
   options: OptionSpec[];
@@ -242,6 +283,8 @@ export interface DecisionDetail {
 
 export interface DecisionsPage {
   task?: string;
+  /** Only this namespace (`''` for the default one). */
+  namespace?: string;
   /** Default 50, at most 1000. */
   limit?: number;
   offset?: number;
@@ -249,6 +292,8 @@ export interface DecisionsPage {
 
 export interface ExportFilter {
   task?: string;
+  /** Only this namespace (`''` for the default one). */
+  namespace?: string;
   /** Only decisions made by this model id. */
   model?: string;
   /** `true` (default): labelled decisions only. `false`: every decision. */
@@ -265,6 +310,8 @@ export interface ExportRow {
   question_id: string;
   model: string;
   task: string;
+  /** Feedback bucket; absent for the default one. */
+  namespace?: string;
   type: Question['type'];
   /** The full prompt; the answer is the next token. */
   prompt: string;
@@ -322,14 +369,20 @@ interface RuntimeOptions {
   storeFeatures?: boolean;
   /** Labels a task needs before its adapter may be served (default 8). */
   minExamples?: number;
-  /** Default position-bias correction (default `full`). */
+  /** Default position-bias correction (default `auto`). */
   debias?: Debias;
   /** Most option rotations per question when permuting (default 4). */
   maxPermutations?: number;
 }
 
 export interface LoadOptions extends RuntimeOptions {
-  /** Hugging Face repo id or a local directory with Qwen3 safetensors (default `Qwen/Qwen3-1.7B`). */
+  /**
+   * What to run (default `Qwen/Qwen3-1.7B`): a Hugging Face repo id, a local
+   * directory, or a short name (`kev`, `kev:0.8b`, `kev:4b`, `nimble-v3`,
+   * `d3`, `d3:2b`, `d1`, `d1-omni`). The family is detected from the files:
+   * Qwen3 and Qwen3.5 checkpoints, or the Nimble, Kev, d3, d1 and d1-omni
+   * decision models.
+   */
   model?: string;
   /** Name reported as `model` in responses (default `cev-<model name>`). */
   name?: string;
@@ -350,4 +403,7 @@ export interface LoadOptions extends RuntimeOptions {
   concurrency?: number;
 }
 
-export type MockOptions = RuntimeOptions;
+export interface MockOptions extends RuntimeOptions {
+  /** Accept `images` and `audio` (default false: text only, like Qwen3). */
+  media?: boolean;
+}

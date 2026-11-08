@@ -14,6 +14,7 @@ import type {
   FeedbackResponse,
   Info,
   LoadOptions,
+  Media,
   MockOptions,
   ModelInfo,
   Questions,
@@ -52,6 +53,21 @@ function wrap(e: unknown): CevError {
   return CODES.includes(code) ? new CevError(code as CevErrorCode, message.slice(split + 2)) : new CevError('internal', message);
 }
 
+/** Base64 for bytes; strings are already in the wire format. */
+function encode(media: Media): string {
+  return typeof media === 'string' ? media : Buffer.from(media.buffer, media.byteOffset, media.byteLength).toString('base64');
+}
+
+/** A request body with its images and audio as base64 strings. */
+function wire<R extends { images?: readonly Media[]; audio?: Media }>(request: R): R {
+  if (request.images === undefined && request.audio === undefined) return request;
+  return {
+    ...request,
+    ...(request.images !== undefined && { images: request.images.map(encode) }),
+    ...(request.audio !== undefined && { audio: encode(request.audio) }),
+  };
+}
+
 async function call<T>(run: () => Promise<string>): Promise<T> {
   try {
     return JSON.parse(await run()) as T;
@@ -80,8 +96,9 @@ export class Cev {
   }
 
   /**
-   * Load a Qwen3 checkpoint from a directory or the Hugging Face cache,
-   * downloading it into `~/.cache/cev/models` on first use.
+   * Load a model from a directory or the Hugging Face cache, downloading it
+   * into `~/.cache/cev/models` on first use. Takes Qwen3 and Qwen3.5
+   * checkpoints and the Nimble, Kev, d3, d1 and d1-omni decision models.
    */
   static async load(options: LoadOptions = {}): Promise<Cev> {
     return Cev.#open(options);
@@ -108,7 +125,7 @@ export class Cev {
    * queue; `concurrency` of them run at a time.
    */
   decide<const Q extends Questions>(request: DecideRequest<Q>): Promise<DecideResponse<Q>> {
-    return call(() => this.#native.decide(JSON.stringify(request)));
+    return call(() => this.#native.decide(JSON.stringify(wire(request))));
   }
 
   /** Attach a label or a comment to a past answer, and learn from the label. */
@@ -118,17 +135,20 @@ export class Cev {
 
   /** Decide each example, then apply its labels as feedback. */
   examples<const Q extends Questions>(examples: readonly Example<Q>[]): Promise<ExampleResult<Q>[]> {
-    return call(() => this.#native.examples(JSON.stringify({ examples })));
+    return call(() => this.#native.examples(JSON.stringify({ examples: examples.map(wire) })));
   }
 
-  /** The online adapter of every task that has labels. */
-  tasks(): Promise<TaskInfo[]> {
-    return call(() => this.#native.tasks());
+  /** The online adapter of every task that has labels: in every namespace, or only in `namespace` (`''` for the default one). */
+  tasks(namespace?: string): Promise<TaskInfo[]> {
+    return call(() => this.#native.tasks(namespace));
   }
 
-  /** Drop a task's adapter. Its labels stay in the log. Resolves to whether there was one. */
-  resetTask(task: string): Promise<boolean> {
-    return call(() => this.#native.resetTask(task));
+  /**
+   * Drop a task's adapter in `namespace` (default: the default one). Its
+   * labels stay in the log. Resolves to whether there was one.
+   */
+  resetTask(task: string, namespace?: string): Promise<boolean> {
+    return call(() => this.#native.resetTask(task, namespace));
   }
 
   /** Recent decisions, newest first. */

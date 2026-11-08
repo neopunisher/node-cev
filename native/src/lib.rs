@@ -8,7 +8,7 @@
 //! over rayon's pool (`threads`), which is shared by the whole process.
 
 use cev_core::{Backend, Debias, ExamplesRequest, FeedbackRequest, MockBackend, SystemOneRequest};
-use cev_model::{Engine, EngineOptions};
+use cev_model::EngineOptions;
 use cev_runtime::{Cev as Runtime, CevError, CevResult, ExportFilter, LearnConfig, RuntimeConfig, Store};
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
@@ -24,6 +24,8 @@ use std::sync::{Arc, Condvar, Mutex, OnceLock};
 #[serde(default, rename_all = "camelCase", deny_unknown_fields)]
 struct Options {
     mock: bool,
+    /// The mock accepts images and audio.
+    media: bool,
     model: Option<String>,
     name: Option<String>,
     device: Option<String>,
@@ -44,6 +46,7 @@ struct Options {
 #[serde(default, deny_unknown_fields)]
 struct Page {
     task: Option<String>,
+    namespace: Option<String>,
     limit: Option<usize>,
     offset: Option<usize>,
 }
@@ -144,10 +147,13 @@ impl Shared {
         init_log();
         let threads = init_threads(o.threads);
         let backend: Arc<dyn Backend> = if o.mock {
-            Arc::new(MockBackend::default())
+            let mock = MockBackend::default();
+            Arc::new(if o.media { mock.with_media() } else { mock })
         } else {
+            // Detects the family (cev on Qwen3/Qwen3.5, Nimble, Kev, d3, d1,
+            // d1-omni) from the repository's files; takes short names too.
             let d = EngineOptions::default();
-            Arc::new(Engine::load(EngineOptions {
+            cev_model::load(EngineOptions {
                 model: o.model.unwrap_or(d.model),
                 device: o.device.unwrap_or(d.device),
                 dtype: o.dtype.unwrap_or(d.dtype),
@@ -155,7 +161,7 @@ impl Shared {
                 prefix_cache_tokens: o.prefix_cache_tokens.unwrap_or(d.prefix_cache_tokens),
                 name: o.name,
                 ..d
-            })?)
+            })?
         };
         let d = RuntimeConfig::default();
         let cfg = RuntimeConfig {
@@ -329,16 +335,16 @@ impl Cev {
         self.submit(env, |s| &s.log, move |cev| text(&cev.feedback(&parse::<FeedbackRequest>(&request)?)?))
     }
 
-    /// `GET /v1/tasks`
+    /// `GET /v1/tasks[?namespace=]`: every namespace when `namespace` is `None`.
     #[napi]
-    pub fn tasks<'env>(&self, env: &'env Env) -> Result<Object<'env>> {
-        self.submit(env, |s| &s.log, |cev| text(&cev.tasks()))
+    pub fn tasks<'env>(&self, env: &'env Env, namespace: Option<String>) -> Result<Object<'env>> {
+        self.submit(env, |s| &s.log, move |cev| text(&cev.tasks(namespace.as_deref())))
     }
 
-    /// `DELETE /v1/tasks/{task}`
+    /// `DELETE /v1/tasks/{task}[?namespace=]`: the default namespace when `None`.
     #[napi]
-    pub fn reset_task<'env>(&self, env: &'env Env, task: String) -> Result<Object<'env>> {
-        self.submit(env, |s| &s.log, move |cev| text(&cev.reset_task(&task)?))
+    pub fn reset_task<'env>(&self, env: &'env Env, task: String, namespace: Option<String>) -> Result<Object<'env>> {
+        self.submit(env, |s| &s.log, move |cev| text(&cev.reset_task(namespace.as_deref().unwrap_or_default(), &task)?))
     }
 
     /// `GET /v1/decisions`
@@ -346,7 +352,7 @@ impl Cev {
     pub fn decisions<'env>(&self, env: &'env Env, page: String) -> Result<Object<'env>> {
         self.submit(env, |s| &s.log, move |cev| {
             let p: Page = parse(&page)?;
-            text(&cev.store().recent_decisions(p.task.as_deref(), p.limit.unwrap_or(50).min(1000), p.offset.unwrap_or(0))?)
+            text(&cev.store().recent_decisions(p.task.as_deref(), p.namespace.as_deref(), p.limit.unwrap_or(50).min(1000), p.offset.unwrap_or(0))?)
         })
     }
 
@@ -378,7 +384,7 @@ impl Cev {
     /// `GET /v1/stats`
     #[napi]
     pub fn stats<'env>(&self, env: &'env Env) -> Result<Object<'env>> {
-        self.submit(env, |s| &s.log, |cev| text(&json!({"store": cev.stats()?, "tasks": cev.tasks().len(), "model": cev.model_info()})))
+        self.submit(env, |s| &s.log, |cev| text(&json!({"store": cev.stats()?, "tasks": cev.tasks(None).len(), "model": cev.model_info()})))
     }
 
     /// Stop the workers after the calls already queued and free the model.

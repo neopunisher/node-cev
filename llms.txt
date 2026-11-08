@@ -1,8 +1,8 @@
 # cev-node
 
-> cev for Node.js (>= 22): typed, calibrated decisions from a small local LLM in one forward pass, in-process. You send program state plus typed questions (noul = is this true, choice = which of these, score = which level) and get typed answers with probabilities; the model never generates text. A native addon runs the cev Rust engine (Qwen3 checkpoints; Metal on macOS, Accelerate or multi-threaded CPU kernels, CUDA as a build feature) off the event loop. Every answer is logged with a decision id; feedback on it is stored and learned from online. ESM-only, TypeScript types included, zero runtime dependencies.
+> cev for Node.js (>= 22): typed, calibrated decisions from a small local LLM in one forward pass, in-process. You send program state plus typed questions (noul = is this true, choice = which of these, score = which level) and get typed answers with probabilities; the model never generates text. A native addon runs the cev Rust engine (Qwen3 and Qwen3.5 checkpoints with cev's zero-shot readout, and the Nimble, Kev, d3, d1 and d1-omni decision models with their own heads, including image and audio input; Metal on macOS, Accelerate or multi-threaded CPU kernels, CUDA as a build feature) off the event loop. Every answer is logged with a decision id; feedback on it is stored and learned from online. ESM-only, TypeScript types included, zero runtime dependencies.
 
-`npm install cev-node`. Prebuilt addons ship for macOS arm64 and Linux x64/arm64 (glibc 2.28+); elsewhere, or for CUDA, build one with `cd node_modules/cev-node && npm run build:native` (needs Rust). Weights are a Hugging Face repo id or a directory; they are read from the Hugging Face cache or downloaded to `~/.cache/cev/models`.
+`npm install cev-node`. Prebuilt addons ship for macOS arm64 and Linux x64/arm64 (glibc 2.28+); elsewhere, or for CUDA, build one with `cd node_modules/cev-node && npm run build:native` (needs Rust). Weights are a Hugging Face repo id, a directory or a short name (`kev:0.8b`, `kev:4b`, `kev`, `nimble-v3`, `d3:2b`, `d3`, `d1`, `d1-omni`); the family is detected from the files. They are read from the Hugging Face cache or downloaded to `~/.cache/cev/models`.
 
 ## Usage
 
@@ -18,7 +18,8 @@ const res = await cev.decide({
     refund: { type: 'noul', instructions: 'Is a refund requested?' },
     severity: { type: 'score', instructions: 'How severe?', criteria: ['Cosmetic', 'Degraded', 'Blocking'] },
   },
-  // debias: 'none' | 'calibrate' | 'permute' | 'full',  no_store: true
+  // debias: 'auto' | 'none' | 'calibrate' | 'permute' | 'full',  no_store: true,  namespace: 'acme'
+  // images: [bytes or base64, ...],  audio: bytes or base64   (models whose cev.model.modalities include them)
 });
 res.answers.team.choice;      // 'tech', typed 'billing' | 'tech'
 res.answers.refund.noul;      // 0.007 (probability of yes)
@@ -43,7 +44,7 @@ type Answer =
   | { type: 'choice'; choice: string; confidence: number; probabilities: Record<string, number>; x_cev: AnswerMeta }
   | { type: 'score'; score: number; confidence: number; legend: Record<string, string>; probabilities: Record<string, number>; x_cev: AnswerMeta };
 
-interface AnswerMeta { decision_id: string; task: string; adapted: boolean; base_probabilities?: number[] }
+interface AnswerMeta { decision_id: string; task: string; namespace?: string; adapted: boolean; base_probabilities?: number[] }
 
 interface DecideResponse { model: string; answers: Record<string, Answer>; usage: { input_tokens: number; output_tokens: 0 }; request_id: string; latency_ms: number }
 
@@ -58,23 +59,24 @@ type Label = boolean | number | string | Record<string, number>;
 Everything returns a promise except `cev.model`, `cev.close()` and `info()`. Nothing blocks the event loop.
 
 - `Cev.load(options?)`, `Cev.mock(options?)` (keyword-overlap stand-in; no weights; the whole API works).
-- `cev.model`: `{ id, backbone, hidden_size, max_options, prompt_version, threads, concurrency }`.
-- `cev.decide({ state, questions, debias?, no_store? })` -> `DecideResponse`.
-- `cev.feedback({ decision_id } | { request_id, question_id }, plus label?, weight?, comment?, metadata?)` -> `{ feedback_id, decision_id, task, served_loss?, learned, task_examples, adapter_active }`.
-- `cev.examples([{ state, questions, labels }])` -> `[{ response, feedback }]`: decide, then learn from the labels.
-- `cev.tasks()` -> `[{ task, examples, buffered, active, temperature, base_loss, adapted_loss }]`; `cev.resetTask(task)` -> boolean.
-- `cev.decisions({ task?, limit?, offset? })` -> decision records; `cev.decision(id)` -> `{ decision, state, prompt, feedback } | null`.
-- `cev.export({ task?, model?, labeled?, since?, limit? })` -> training rows (`prompt`, `codes`, `options`, `target`, `label`, ...); `cev.exportNdjson(filter?)` -> the same as NDJSON text for rust-cev's `training/train_lora.py --source file.jsonl`. `labeled` defaults to true.
+- `cev.model`: `{ id, backbone, family, modalities, hidden_size, max_options, prompt_version, threads, concurrency }`. `family` is `cev` | `nimble` | `kev` | `d3` | `d1` | `d1-omni`; `modalities` lists `text` plus `image` and/or `audio`.
+- `cev.decide({ state, questions, images?, audio?, namespace?, debias?, no_store? })` -> `DecideResponse`. `images`: PNG/JPEG/WebP/GIF as `Uint8Array`/`Buffer` or base64 (d1, d1-omni, d3, Qwen3.5). `audio`: one WAV clip, same forms (d1-omni; 16 kHz mono best, others resampled). d1-omni takes images or audio, not both.
+- `cev.feedback({ decision_id } | { request_id, question_id }, plus label?, weight?, comment?, metadata?)` -> `{ feedback_id, decision_id, task, namespace?, served_loss?, learned, task_examples, adapter_active }`.
+- `cev.examples([{ state, questions, labels, images?, audio?, namespace? }])` -> `[{ response, feedback }]`: decide, then learn from the labels.
+- `cev.tasks(namespace?)` -> `[{ task, namespace?, examples, buffered, active, temperature, base_loss, adapted_loss }]` (all namespaces when omitted; `''` is the default one); `cev.resetTask(task, namespace?)` -> boolean (default namespace when omitted).
+- `cev.decisions({ task?, namespace?, limit?, offset? })` -> decision records; `cev.decision(id)` -> `{ decision, state, prompt, feedback } | null`.
+- `cev.export({ task?, namespace?, model?, labeled?, since?, limit? })` -> training rows (`prompt`, `codes`, `options`, `target`, `label`, ...); `cev.exportNdjson(filter?)` -> the same as NDJSON text for rust-cev's `training/train_lora.py --source file.jsonl`. `labeled` defaults to true.
 - `cev.stats()` -> `{ store: { requests, decisions, feedback, labeled_decisions }, tasks, model }`.
 - `cev.close()`: frees the model after the calls already made settle; later calls reject with code `closed`.
 - `info()` -> `{ version, metal, accelerate, cuda, cores, performanceCores, threads }`.
 
-Options (all optional): `model` (`Qwen/Qwen3-1.7B`), `device` (`auto` | `cpu` | `metal` | `cuda`), `dtype` (`auto` | `f32` | `f16` | `bf16`), `threads` (CPU pool size; default performance cores or `RAYON_NUM_THREADS`; process-wide, first load wins), `concurrency` (forward passes at once; default 1), `db` (SQLite path; default `:memory:`), `debias` (`full`), `maxPermutations` (4), `onlineLearning` (true), `minExamples` (8), `storeFeatures` (true), `maxContext` (32768), `prefixCacheTokens` (65536), `name`. `Cev.mock` takes `db`, `debias`, `maxPermutations`, `onlineLearning`, `minExamples`, `storeFeatures`.
+Options (all optional): `model` (`Qwen/Qwen3-1.7B`; repo id, directory or short name), `device` (`auto` | `cpu` | `metal` | `cuda`), `dtype` (`auto` | `f32` | `f16` | `bf16`), `threads` (CPU pool size; default performance cores or `RAYON_NUM_THREADS`; process-wide, first load wins), `concurrency` (forward passes at once; default 1), `db` (SQLite path; default `:memory:`), `debias` (`auto`: `full` for zero-shot code readouts, `none` for the trained decision models), `maxPermutations` (4), `onlineLearning` (true), `minExamples` (8), `storeFeatures` (true), `maxContext` (32768), `prefixCacheTokens` (65536), `name`. `Cev.mock` takes `db`, `debias`, `maxPermutations`, `onlineLearning`, `minExamples`, `storeFeatures`, and `media` (true: accept images and audio).
 
 ## Behavior worth knowing
 
-- Rejections are `CevError` with `code`: `bad_request` (malformed call), `not_found` (no such decision), `closed`, `internal` (weights, I/O).
+- Rejections are `CevError` with `code`: `bad_request` (malformed call, or images/audio the model does not take), `not_found` (no such decision), `closed`, `internal` (weights, I/O).
 - A task's adapter is served only after `minExamples` labels and only while it beats the base model on labels it had not yet seen; `x_cev.adapted` tells which answered. Name tasks with `task`; otherwise the key is a hash of the question, so rewording starts over.
+- Adapters are kept per namespace and task: labels on decisions made with `namespace: 'acme'` only change answers served with `namespace: 'acme'`. Omit it for the shared default.
 - `no_store: true` answers have an empty `decision_id` and cannot take feedback.
 - A state seen before is served from a prefix cache (Qwen3-0.6B on an M4 Max: 35 ms instead of 46 on Metal). Put the parts of the state that change last.
 - Speed (Qwen3-0.6B, M4 Max, 3 questions, `calibrate`): about 46 ms on Metal, 183 ms on CPU; `full` debias costs about twice that. On a GPU keep `concurrency` at 1. On a CPU, `concurrency: 8` roughly doubles requests/s at the cost of per-request latency; more `threads` than 4 barely help a single request on Apple silicon.

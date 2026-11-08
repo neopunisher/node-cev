@@ -26,6 +26,7 @@ const PARAMS = [
   'criteria: Record<string, string>',
   'id: string',
   'writeFile: (path: string, data: string) => Promise<void>',
+  'readFile: (path: string) => Promise<Buffer>',
 ].join(', ');
 
 interface Snippet {
@@ -67,7 +68,7 @@ const SNIPPETS = DOCS.flatMap(snippets);
 const opened: Cev[] = [];
 before(() => {
   mock.method(Cev, 'load', async () => {
-    const cev = await Cev.mock();
+    const cev = await Cev.mock({ media: true });
     opened.push(cev);
     return cev;
   });
@@ -89,7 +90,8 @@ async function context() {
   });
   const written: string[] = [];
   const writeFile = async (_path: string, data: string) => void written.push(data);
-  return [cev, state, criteria, res.answers.team.x_cev.decision_id, writeFile] as const;
+  const readFile = async (path: string) => Buffer.from(`not really ${path}`);
+  return [cev, state, criteria, res.answers.team.x_cev.decision_id, writeFile, readFile] as const;
 }
 
 test('the documents have examples', () => {

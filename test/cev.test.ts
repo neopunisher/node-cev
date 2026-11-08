@@ -58,6 +58,71 @@ test('decide answers every question with its type', async () => {
   cev.close();
 });
 
+test('the model says its family and what it takes', async () => {
+  const cev = await Cev.mock();
+  assert.equal(cev.model.family, 'cev');
+  assert.deepEqual(cev.model.modalities, ['text']);
+  cev.close();
+  const media = await Cev.mock({ media: true });
+  assert.deepEqual(media.model.modalities, ['text', 'image', 'audio']);
+  media.close();
+});
+
+test('images and audio go as bytes or base64', async () => {
+  const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+  const wav = Buffer.from('RIFF....WAVEfmt ');
+  const ask = { seen: { type: 'noul', instructions: 'Is something shown?' } } as const satisfies Questions;
+
+  const text = await Cev.mock();
+  await rejects(text.decide({ state: 'x', questions: ask, images: [png] }), 'bad_request');
+  await rejects(text.decide({ state: 'x', questions: ask, audio: wav }), 'bad_request');
+  text.close();
+
+  const cev = await Cev.mock({ media: true });
+  const plain = await cev.decide({ state: 'x', questions: ask });
+  const bytes = await cev.decide({ state: 'x', questions: ask, images: [png] });
+  const b64 = await cev.decide({ state: 'x', questions: ask, images: [`data:image/png;base64,${Buffer.from(png).toString('base64')}`] });
+  assert.ok(bytes.usage.input_tokens > plain.usage.input_tokens, 'the image reached the model');
+  assert.equal(b64.usage.input_tokens, bytes.usage.input_tokens);
+  await cev.decide({ state: 'x', questions: ask, audio: wav });
+  // A view into a larger buffer sends only its own bytes.
+  const view = new Uint8Array([0, 0, ...png, 0]).subarray(2, 2 + png.length);
+  assert.equal((await cev.decide({ state: 'x', questions: ask, images: [view] })).usage.input_tokens, bytes.usage.input_tokens);
+  await rejects(cev.decide({ state: 'x', questions: ask, images: ['not base64!!'] }), 'bad_request');
+
+  const [ex] = await cev.examples([{ state: 'x', questions: ask, labels: { seen: true }, images: [png] }]);
+  assert.equal(ex?.response.usage.input_tokens, bytes.usage.input_tokens);
+  cev.close();
+});
+
+test('namespaces keep feedback apart', async () => {
+  const cev = await Cev.mock();
+  const team = { team: QUESTIONS.team };
+  const acme = await cev.decide({ state: TICKET, questions: team, namespace: 'acme' });
+  const plain = await cev.decide({ state: TICKET, questions: team });
+  assert.equal(acme.answers.team.x_cev.namespace, 'acme');
+  assert.equal(plain.answers.team.x_cev.namespace, undefined);
+
+  const fb = await cev.feedback({ decision_id: acme.answers.team.x_cev.decision_id, label: 'billing' });
+  assert.equal(fb.namespace, 'acme');
+  await cev.feedback({ decision_id: plain.answers.team.x_cev.decision_id, label: 'tech' });
+
+  assert.equal((await cev.tasks()).length, 2, 'every namespace');
+  const [mine] = await cev.tasks('acme');
+  assert.equal(mine?.namespace, 'acme');
+  assert.equal((await cev.tasks('')).length, 1, 'the default namespace');
+
+  assert.equal((await cev.decisions({ namespace: 'acme' })).length, 1);
+  assert.equal((await cev.decisions({ namespace: 'acme' }))[0]?.namespace, 'acme');
+  const rows = await cev.export({ namespace: 'acme' });
+  assert.deepEqual(rows.map((r) => r.namespace), ['acme']);
+
+  assert.equal(await cev.resetTask('router.team'), true, 'the default namespace');
+  assert.equal(await cev.resetTask('router.team', 'acme'), true);
+  assert.equal(await cev.resetTask('router.team', 'acme'), false);
+  cev.close();
+});
+
 test('state can be text, and criteria a list of names', async () => {
   const cev = await Cev.mock();
   const { answers } = await cev.decide({

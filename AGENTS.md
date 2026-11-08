@@ -68,7 +68,8 @@ change done.
 - The `js` examples in `README.md` and `llms.txt` are typechecked and run on
   the mock backend by `test/docs.test.ts`. Keep them valid as written; a
   fragment may use only the names that test passes in (`cev`, `state`,
-  `criteria`, `id`, `writeFile`).
+  `criteria`, `id`, `writeFile`, `readFile`). Its `cev` is the mock with
+  `media: true`.
 - Benchmark numbers in the README come from `scripts/bench.mjs` on the machine
   named there. Re-measure rather than extrapolate when changing them.
 - User-visible changes get a `CHANGELOG.md` entry.
@@ -91,4 +92,5 @@ at zero dependencies. A manual run of the workflow builds without staging.
   be `v<version>`.
 - The engine versions are pinned in `native/Cargo.lock`. To take a new engine
   release, run `cargo update -p cev-core -p cev-model -p cev-runtime` in
-  `native/`.
+  `native/`; for a new minor version (0.2 to 0.3) raise the requirements in
+  `native/Cargo.toml` first.

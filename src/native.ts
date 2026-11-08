@@ -7,8 +7,8 @@ export interface NativeCev {
   decide(request: string): Promise<string>;
   examples(request: string): Promise<string>;
   feedback(request: string): Promise<string>;
-  tasks(): Promise<string>;
-  resetTask(task: string): Promise<string>;
+  tasks(namespace?: string | null): Promise<string>;
+  resetTask(task: string, namespace?: string | null): Promise<string>;
   decisions(page: string): Promise<string>;
   decision(id: string): Promise<string>;
   export(filter: string): Promise<string>;
